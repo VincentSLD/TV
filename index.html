@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Programme TV</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: rgba(255,255,255,0.07);
+    --accent: #ff3c5f;
+    --accent2: #ffb300;
+    --accent3: #00d4ff;
+    --text: #f0f0f5;
+    --muted: #6b6b80;
+    --live: #ff3c5f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE TEXTURE */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999; opacity: 0.4;
+  }
+
+  /* HEADER */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+    background: rgba(10,10,15,0.92);
+    backdrop-filter: blur(20px);
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 0.08em;
+    color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .logo-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.5; transform:scale(0.85); }
+  }
+
+  .current-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  .current-time span { color: var(--accent2); font-weight: 500; }
+
+  /* DAY SELECTOR */
+  .day-bar {
+    display: flex; gap: 6px;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .day-bar::-webkit-scrollbar { height: 3px; }
+  .day-bar::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 99px; }
+
+  .day-btn {
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    letter-spacing: 0.04em;
+  }
+
+  .day-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+
+  .day-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 20px rgba(255,60,95,0.3);
+  }
+
+
+
+  /* MAIN GRID */
+  .main { padding: 24px 0 24px 32px; }
+
+  /* LAYOUT: sticky channel column + single shared scroll */
+  .grid-layout {
+    display: flex;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* Sticky left column with channel labels */
+  .channels-col {
+    flex-shrink: 0;
+    width: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: sticky;
+    left: 0;
+    z-index: 10;
+  }
+
+  /* Single scrollable area for all program tracks */
+  .tracks-scroll {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    cursor: grab;
+  }
+
+  .tracks-scroll:active { cursor: grabbing; }
+  .tracks-scroll::-webkit-scrollbar { height: 5px; }
+  .tracks-scroll::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 99px; }
+  .tracks-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .tracks-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: max-content;
+  }
+
+  /* CHANNEL ROW */
+  .channel-section {
+    display: none; /* unused now */
+  }
+
+  @keyframes fadeIn {
+    from { opacity:0; transform:translateY(8px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+
+  .channel-label {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 12px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    gap: 4px;
+    min-height: 80px;
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .channel-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    color: var(--muted);
+    line-height: 1;
+  }
+
+  .channel-name {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text);
+    text-align: center;
+  }
+
+  .channel-logo {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.85rem;
+    color: #fff;
+    letter-spacing: 0.05em;
+  }
+
+  /* PROGRAMS TRACK */
+  .programs-track {
+    display: flex;
+    overflow-x: visible;
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 8px 8px 0;
+    background: var(--surface);
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .programs-track::-webkit-scrollbar { display: none; }
+
+  /* PROGRAM CARD */
+  .program {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+    overflow: hidden;
+    min-width: 180px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-height: 80px;
+  }
+
+  .program:last-child { border-right: none; }
+
+  .program::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .program:hover { background: var(--surface2); }
+  .program:hover::before { opacity: 1; }
+
+  .program.live {
+    background: rgba(255,60,95,0.07);
+  }
+
+  .program.live::before {
+    background: var(--live);
+    opacity: 1;
+  }
+
+  .program.past { opacity: 0.4; }
+
+  .prog-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .prog-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+    margin-bottom: 6px;
+  }
+
+  .prog-meta {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .prog-genre {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--live);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .live-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--live);
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  /* PROGRESS BAR */
+  .prog-progress {
+    position: absolute; bottom: 0; left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 1s linear;
+  }
+
+  /* TIME RULER */
+  .time-ruler {
+    display: flex;
+    margin-left: 120px;
+    margin-bottom: 4px;
+    overflow: hidden;
+  }
+
+  .time-tick {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    min-width: 120px;
+    letter-spacing: 0.06em;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    align-items: center; justify-content: center;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 460px; width: 90%;
+    animation: modalIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+
+  @keyframes modalIn {
+    from { opacity:0; transform:scale(0.9) translateY(20px); }
+    to { opacity:1; transform:scale(1) translateY(0); }
+  }
+
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: var(--surface2); border: none;
+    color: var(--muted); width: 32px; height: 32px;
+    border-radius: 50%; cursor: pointer;
+    font-size: 1.1rem; display: flex; align-items: center; justify-content: center;
+    transition: color 0.2s;
+  }
+
+  .modal-close:hover { color: var(--text); }
+
+  .modal-channel {
+    font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 8px;
+  }
+
+  .modal-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem; letter-spacing: 0.05em;
+    color: var(--text); line-height: 1.1; margin-bottom: 12px;
+  }
+
+  .modal-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem; color: var(--accent2);
+    margin-bottom: 16px; letter-spacing: 0.08em;
+  }
+
+  .modal-desc {
+    font-size: 0.88rem; line-height: 1.7;
+    color: rgba(240,240,245,0.7);
+    margin-bottom: 20px;
+  }
+
+  .modal-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .modal-tag {
+    padding: 5px 12px; border-radius: 6px;
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  /* SEARCH */
+  .search-wrap {
+    margin-left: auto; margin-right: 24px;
+    position: relative;
+  }
+
+  .search-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    padding: 8px 14px 8px 34px;
+    outline: none;
+    width: 180px;
+    transition: border-color 0.2s, width 0.3s;
+  }
+
+  .search-input:focus { border-color: rgba(255,255,255,0.2); width: 240px; }
+  .search-input::placeholder { color: var(--muted); }
+
+  .search-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 0.85rem; pointer-events: none;
+  }
+
+  /* EMPTY */
+  .empty-state {
+    padding: 60px; text-align: center; color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  /* GENRE COLORS */
+  .g-info { background: rgba(0,212,255,0.15); color: var(--accent3); }
+  .g-film { background: rgba(255,179,0,0.15); color: var(--accent2); }
+  .g-sport { background: rgba(0,230,120,0.15); color: #00e678; }
+  .g-serie { background: rgba(180,100,255,0.15); color: #b464ff; }
+  .g-divertissement { background: rgba(255,60,95,0.15); color: var(--accent); }
+  .g-documentaire { background: rgba(255,140,60,0.15); color: #ff8c3c; }
+  .g-musique { background: rgba(255,60,180,0.15); color: #ff3cb4; }
+
+  .ce-soir-btn {
+    background: linear-gradient(135deg, #1a1a30, #2a1a3a) !important;
+    border-color: #a855f7 !important;
+    color: #d8b4fe !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 14px rgba(168,85,247,0.25);
+    transition: all 0.2s;
+  }
+  .ce-soir-btn:hover {
+    background: linear-gradient(135deg, #2a1a3a, #3b1f5e) !important;
+    box-shadow: 0 0 22px rgba(168,85,247,0.45);
+    color: #f3e8ff !important;
+  }
+
+
+    header { padding: 14px 16px; }
+    .main { padding: 12px 16px; }
+    .day-bar, .filter-bar { padding: 12px 16px; }
+    .channel-section { grid-template-columns: 80px 1fr; }
+    .channel-label { min-width: 80px; }
+    .search-wrap { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    TV Guide
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input class="search-input" type="text" placeholder="Rechercher..." id="searchInput">
+  </div>
+  <div class="current-time" id="clockDisplay"></div>
+</header>
+
+<div class="day-bar" id="dayBar">
+  <button class="day-btn ce-soir-btn" id="ceSoirBtn" onclick="scrollToSoir()">🌙 Ce soir</button>
+</div>
+
+
+<div class="main" id="mainContent">
+  <div class="grid-layout">
+    <div class="channels-col" id="channelsCol"></div>
+    <div class="tracks-scroll" id="tracksScroll">
+      <div class="tracks-inner" id="tracksInner"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <button class="modal-close" id="modalClose">✕</button>
+    <div class="modal-channel" id="mChannel"></div>
+    <div class="modal-title" id="mTitle"></div>
+    <div class="modal-time" id="mTime"></div>
+    <div class="modal-desc" id="mDesc"></div>
+    <div class="modal-tags" id="mTags"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const channels = [
+  { id:1,  num:'TF1',  name:'TF1',              color:'#1a6fd4' },
+  { id:2,  num:'F2',   name:'France 2',          color:'#d41a1a' },
+  { id:3,  num:'F3',   name:'France 3',          color:'#d47a1a' },
+  { id:4,  num:'C+',   name:'Canal+',            color:'#222222' },
+  { id:5,  num:'F5',   name:'France 5',          color:'#1aad6d' },
+  { id:6,  num:'M6',   name:'M6',                color:'#e6a800' },
+  { id:7,  num:'ART',  name:'Arte',              color:'#6b3fa0' },
+  { id:8,  num:'C8',   name:'C8',                color:'#c0392b' },
+  { id:9,  num:'W9',   name:'W9',                color:'#e84393' },
+  { id:10, num:'TMC',  name:'TMC',               color:'#1a8fd4' },
+  { id:11, num:'TFX',  name:'TFX',               color:'#2ecc71' },
+  { id:12, num:'NRJ',  name:'NRJ 12',            color:'#ff6600' },
+  { id:13, num:'LCP',  name:'LCP',               color:'#003580' },
+  { id:14, num:'F4',   name:'France 4',          color:'#c0392b' },
+  { id:15, num:'BFM',  name:'BFM TV',            color:'#e30614' },
+  { id:16, num:'CNW',  name:'CNews',             color:'#004a9f' },
+  { id:17, num:'CST',  name:'CSTAR',             color:'#ff3366' },
+  { id:18, num:'GUL',  name:'Gulli',             color:'#f7a800' },
+  { id:19, num:'TSF',  name:'TF1 Séries Films',  color:'#0066cc' },
+  { id:20, num:'EQP',  name:"L'Équipe",          color:'#1a1a1a' },
+  { id:21, num:'6TR',  name:'6ter',              color:'#e6a800' },
+  { id:22, num:'N23',  name:'Numéro 23',         color:'#8e44ad' },
+  { id:23, num:'RMS',  name:'RMC Story',         color:'#2c3e50' },
+  { id:24, num:'RMD',  name:'RMC Découverte',    color:'#16a085' },
+  { id:25, num:'CH25', name:'Chérie 25',         color:'#e91e63' },
+];
+
+const genreData = [
+  { genre:'info', label:'Info', cls:'g-info' },
+  { genre:'film', label:'Film', cls:'g-film' },
+  { genre:'sport', label:'Sport', cls:'g-sport' },
+  { genre:'serie', label:'Série', cls:'g-serie' },
+  { genre:'divertissement', label:'Divert.', cls:'g-divertissement' },
+  { genre:'documentaire', label:'Docu', cls:'g-documentaire' },
+  { genre:'musique', label:'Musique', cls:'g-musique' },
+];
+
+function genreInfo(g) {
+  return genreData.find(x=>x.genre===g) || { label:g, cls:'g-info' };
+}
+
+// Programs per channel for today
+const programTemplates = [
+  // 1 - TF1
+  [ [600,'JT 6H',                'info',  'Le journal télévisé du matin avec toute l\'actualité nationale et internationale.',55],
+    [700,'Télématin',            'divertissement','Magazine matinal avec les tendances, la météo et les invités du jour.',120],
+    [900,'Familles nombreuses',  'divertissement','Découvrez le quotidien des grandes familles françaises.',60],
+    [1000,'Amour, Gloire et Beauté','serie','Les Bold et les Forrester dans une nouvelle intrigue passionnante.',30],
+    [1030,'Les feux de l\'amour','serie','La saga américaine emblématique en version française.',30],
+    [1200,'JT 13H',              'info',  'Le journal de la mi-journée présenté par Marie-Sophie Lacarrau.',60],
+    [1305,'Scènes de ménages',   'serie', 'Séries de sketches humoristiques sur la vie de couple.',55],
+    [1400,'Inspecteur Barnaby',  'serie', 'Un meurtre mystérieux dans la campagne anglaise perturbe la vie du village.',120],
+    [1600,'4 mariages pour 1 lune de miel','divertissement','Des couples s\'évaluent mutuellement pour gagner une lune de miel de rêve.',90],
+    [1730,'50 min inside',       'divertissement','Les coulisses des stars et de l\'actualité people.',60],
+    [1900,'JT 20H',              'info',  'Le journal télévisé du soir, le plus regardé de France.',40],
+    [1950,'Sept à huit',         'divertissement','Grand magazine d\'actualité avec reportages et portraits exclusifs.',80],
+    [2110,'Koh-Lanta',           'divertissement','Les aventuriers s\'affrontent dans une jungle hostile pour rester dans la course.',120],
+    [2310,'LCI',                 'info',  'Décryptage de l\'actualité avec les spécialistes de LCI.',60],
+  ],
+  // 2 - France 2
+  [ [600,'Télématin',            'divertissement','Le magazine du matin sur France 2 avec culture, actualité et humour.',120],
+    [800,'Thalassa',             'documentaire', 'Voyage au coeur des océans et des peuples qui vivent de la mer.',90],
+    [930,'Plus belle la vie',    'serie', 'Le feuilleton culte du Mistral dans une nouvelle saison palpitante.',30],
+    [1000,'Affaires conclues',   'divertissement','Des objets du quotidien mis aux enchères entre commissaires-priseurs et acheteurs.',90],
+    [1130,'Toute une histoire',  'divertissement','Témoignages et récits de vie extraordinaires.',90],
+    [1300,'JT 13H',              'info',  'Le journal de France 2 présenté par Julian Bugier.',30],
+    [1340,'Silence, ça pousse !','documentaire', 'Conseils et astuces pour le jardinage de saison.',60],
+    [1440,'Slam',                'divertissement','Le jeu des mots avec Cyril Féraud et ses candidats passionnés.',30],
+    [1510,'Des chiffres et des lettres','divertissement','Le jeu emblématique de la culture sur France 2.',30],
+    [1540,'Tout le monde veut prendre sa place','divertissement','Valérie Damidot anime le célèbre jeu de plateau.',60],
+    [1710,'N\'oubliez pas les paroles','divertissement','Nagui anime le jeu musical le plus populaire de France.',60],
+    [1900,'JT 20H',              'info',  'Le journal du soir de France Télévisions.',40],
+    [2000,'Ce soir ou jamais',   'divertissement','Frédéric Taddeï réunit des personnalités aux opinions tranchées.',120],
+    [2200,'Un si grand soleil',  'serie', 'Le feuilleton du soir avec ses rebondissements et ses personnages attachants.',30],
+  ],
+  // 3 - France 3
+  [ [700,'Matinalé régionale',   'info',  'L\'actualité de votre région en direct chaque matin.',60],
+    [815,'Midi en France',       'divertissement','Magazine régional avec les rendez-vous culturels et les bonnes adresses.',45],
+    [900,'Chasseurs d\'appart',  'divertissement','Candidats et chasseurs d\'appartements s\'allient pour trouver le bien idéal.',60],
+    [1000,'Inspecteur Derrick',  'serie', 'Le célèbre inspecteur munichois résout une nouvelle affaire.',60],
+    [1100,'Crimes en série',     'serie', 'Un thriller psychologique haletant entre enquêteurs et tueur en série.',60],
+    [1200,'JT 12/13',            'info',  'L\'actualité nationale et régionale en direct.',60],
+    [1315,'Des racines et des ailes','documentaire','Patrimoine, culture et voyages à travers les régions du monde.',90],
+    [1645,'Magazine littéraire', 'documentaire', 'Rencontres avec les auteurs et les livres qui font l\'actualité.',30],
+    [1715,'19/20 régional',      'info',  'Le journal régional en direct de votre région.',30],
+    [1810,'19/20 national',      'info',  'L\'actualité nationale présentée par Carole Gaessler.',30],
+    [1840,'Plus belle la vie',   'serie', 'Episode inédit du feuilleton marseillais le plus regardé.',30],
+    [1910,'Un village français', 'serie', 'Pendant l\'Occupation, la vie d\'un village sous tension.',90],
+    [2040,'Thalassa',            'documentaire', 'Une odyssée au coeur des mers et des civilisations maritimes.',60],
+    [2140,'Soir 3',              'info',  'Le journal du soir de France 3 avec les infos régionales.',30],
+  ],
+  // 4 - Canal+
+  [ [700,'Le Grand Journal',     'divertissement','Le talk-show culte de Canal+ avec culture et humour matinal.',60],
+    [800,'Morning Zapping',      'divertissement','Le best-of des émissions de la veille en version accélérée.',30],
+    [830,'Sport+ Matin',         'sport', 'Toute l\'actualité sportive : football, tennis, basket et plus.',60],
+    [930,'Téléfoot Canal+',      'sport', 'Le magazine football du week-end avec analyses et extraits.',90],
+    [1100,'Formule 1 - Qualif.', 'sport', 'Les qualifications du Grand Prix en direct et en intégral.',90],
+    [1230,'Journal Canal+',      'info',  'L\'information traitée à la façon Canal+ : libre, décalée, complète.',30],
+    [1300,'Le Supplément',       'divertissement','L\'émission satirique qui décrypte l\'actualité avec humour et mordant.',60],
+    [1400,'Film : Dune Partie 2','film',  'L\'adaptation épique de Denis Villeneuve : Paul Atreïdes mène sa guerre sainte.',150],
+    [1630,'Archives Koh-Lanta',  'divertissement','Retour sur les meilleures saisons de l\'émission culte.',90],
+    [1800,'Sports du soir',      'sport', 'Résumés, interviews et analyses des matches de la journée.',60],
+    [1900,'Ligue 1 - PSG vs OM', 'sport', 'Le Classique en direct ! Paris Saint-Germain affronte l\'Olympique de Marseille.',120],
+    [2100,'Le Grand Canal',      'divertissement','Le talk-show nocturne de Canal+ avec invités surprises.',60],
+    [2200,'Film : Oppenheimer',  'film',  'Le chef-d\'oeuvre de Christopher Nolan sur le père de la bombe atomique.',180],
+  ],
+  // 5 - France 5
+  [ [600,'La Matinale de France 5','info', 'Matinale culturelle et scientifique avec les experts du moment.',120],
+    [800,'C dans l\'air',        'info',  'Yves Calvi et ses experts débattent du sujet du jour.',60],
+    [900,'La Maison France 5',   'divertissement','Conseils déco, cuisine et bien-être pour votre intérieur.',120],
+    [1100,'Échappées belles',    'documentaire', 'Sophie Jovillard vous emmène au bout du monde pour des voyages uniques.',90],
+    [1300,'C à vous',            'divertissement','Anne-Élisabeth Lemoine reçoit les personnalités qui font l\'actualité.',60],
+    [1400,'Géopolitis',          'documentaire', 'Décryptage géopolitique des événements qui secouent la planète.',60],
+    [1500,'La Théorie du chaos', 'documentaire', 'Comment de petits événements peuvent changer le cours de l\'histoire.',60],
+    [1600,'Planète animale',     'documentaire', 'Les secrets de la vie sauvage filmés au plus près des animaux.',90],
+    [1730,'Silence, ça pousse !','documentaire', 'Jardiner en ville : les nouvelles tendances du potager urbain.',30],
+    [1800,'C dans l\'air soir',  'info',  'Nouveau tour d\'actualité avec un panel d\'experts renouvelé.',60],
+    [2000,'Docs du soir',        'documentaire', 'Grand documentaire en soirée sur un sujet de société fondamental.',120],
+    [2200,'Arte-France co-prod', 'documentaire', 'Co-production Arte/France 5 sur la révolution numérique mondiale.',90],
+  ],
+  // 6 - M6
+  [ [700,'Morning Stars',        'divertissement','Le meilleur de la matinée avec musique, actu et bonne humeur.',90],
+    [830,'Turbo',                'divertissement','Le magazine automobile incontournable du week-end.',60],
+    [930,'Zone Interdite',       'documentaire', 'Enquêtes et reportages au coeur des sujets qui font polémique.',90],
+    [1100,'100% Mag',            'divertissement','Magazine lifestyle avec tests produits, tendances et bons plans.',60],
+    [1220,'Le 12.45',            'info',  'Edition complète du midi sur M6.',30],
+    [1300,'Cauchemar en cuisine','divertissement','Philippe Etchebest sauve un restaurant en perdition.',60],
+    [1400,'Top Chef',            'divertissement','Les chefs s\'affrontent dans des épreuves culinaires intenses.',90],
+    [1530,'Pékin Express',       'divertissement','Des binômes traversent le continent avec 1 euro en poche.',90],
+    [1700,'Scènes de ménages',   'serie', 'Les couples de M6 dans leurs situations les plus hilarantes.',60],
+    [1800,'Les Reines du shopping','divertissement','Cristina Córdula note le style des candidates.',60],
+    [1930,'Capital',             'documentaire', 'Investigation économique : les secrets des grandes entreprises françaises.',90],
+    [2100,'Film : Titanic',      'film',  'La romance épique de James Cameron entre Jack et Rose sur le paquebot maudit.',194],
+    [2354,'Un gars, une fille',  'serie', 'Les aventures du couple culte des années 2000.',26],
+  ],
+  // 7 - Arte
+  [ [700,'Arte Journal',         'info',  'L\'information européenne et internationale vue par Arte.',30],
+    [730,'Metropolis',           'documentaire', 'Le magazine des arts et de la culture à travers l\'Europe.',60],
+    [830,'Square idée',          'documentaire', 'Rencontre avec des intellectuels et artistes qui bousculent les idées.',30],
+    [900,'Kung Fu Panda',        'film',  'Le panda Po réalise son destin de guerrier légendaire.',90],
+    [1100,'Philosophie',         'documentaire', 'Raphaël Enthoven explore les grands philosophes et leurs idées majeures.',30],
+    [1130,'Xenius',              'documentaire', 'La science expliquée de manière simple et ludique.',30],
+    [1200,'Arte Journal',        'info',  'Journal du midi d\'Arte avec les actualités culturelles et politiques.',30],
+    [1230,'GEO reportage',       'documentaire', 'Un voyage au coeur des terres les plus sauvages et isolées de la planète.',60],
+    [1330,'Concert : Beethoven', 'musique','Intégrale des Symphonies de Beethoven par l\'Orchestre de Vienne.',120],
+    [1530,'Twist & Shout',       'musique','Documentaire sur l\'histoire du rock des années 60 aux années 90.',90],
+    [1700,'28 minutes',          'info',  'Elisabeth Quin et son équipe débattent de l\'actualité du jour.',30],
+    [1800,'Arte Journal',        'info',  'Le journal du soir d\'Arte avec la perspective européenne.',30],
+    [1830,'Le Monde en face',    'documentaire', 'Un grand documentaire sur un enjeu mondial : climat, migrations, santé.',90],
+    [2000,'Film : Parasite',     'film',  'Bong Joon-ho, Palme d\'or à Cannes. Une famille pauvre infiltre une famille riche.',132],
+    [2212,'Arte Concert',        'musique','Concert live en direct d\'une grande salle européenne.',90],
+  ],
+  // 8 - C8
+  [ [700,'Morning Show',         'divertissement','La matinale décalée de C8 avec chroniques et surprises.',90],
+    [830,'TPMP Best-of',         'divertissement','Le best-of des séquences les plus folles de TPMP.',60],
+    [1000,'Il était une fois… l\'Homme','serie','La série animée éducative qui retrace l\'histoire de l\'humanité.',60],
+    [1100,'Nicky Larson',        'serie', 'Le détective privé japonais dans ses missions les plus improbables.',60],
+    [1200,'Scènes de ménages',   'serie', 'Les duos hilarants de C8 dans leurs situations cocasses.',60],
+    [1300,'Le journal',          'info',  'L\'actualité du jour résumée en 20 minutes sur C8.',20],
+    [1320,'Cauchemar en cuisine','divertissement','Philippe Etchebest en mission pour sauver un restaurant à Bordeaux.',60],
+    [1420,'Touche pas à mon poste','divertissement','L\'émission de Cyril Hanouna avec ses chroniqueurs déchaînés.',90],
+    [1550,'Le Grand Bêtisier',   'divertissement','Les moments les plus insolites et hilarants de la télé française.',60],
+    [1750,'Marseille Police Spéciale','serie','Le quotidien tendu des policiers de la cité phocéenne.',60],
+    [1950,'TPMP prime',          'divertissement','Le prime time de Cyril Hanouna avec ses invités et ses clashs.',120],
+    [2150,'Disparues',           'serie', 'Thriller policier : une enquêtrice traque un mystérieux ravisseur.',90],
+    [2320,'Crimes',              'serie', 'Deuxième épisode de la nuit : une sombre enquête en province.',60],
+  ],
+  // 9 - W9
+  [ [600,'W9 matin',             'divertissement','La matinale légère de W9 pour bien démarrer la journée.',90],
+    [730,'Les Mystères de l\'amour','serie','Les aventures amoureuses et amicales de la bande de Saint-Tropez.',60],
+    [830,'Beverly Hills 90210',  'serie', 'La série culte américaine des années 90 avec ses personnages iconiques.',60],
+    [930,'Dawson',               'serie', 'Les jeunes de Capeside entre amours, amitié et ambitions artistiques.',60],
+    [1030,'Touche pas à ma famille','divertissement','Des familles vivent des expériences inédites et touchantes.',60],
+    [1130,'Les Ch\'tis vs les Marseillais','divertissement','Les deux équipes s\'affrontent dans des défis délirants.',60],
+    [1300,'Journal W9',          'info',  'Le point actualité de mi-journée.',20],
+    [1320,'Les Anges',           'divertissement','Les candidats des émissions de télé-réalité dans une nouvelle aventure.',60],
+    [1420,'Les Ch\'tis à Ibiza', 'divertissement','La bande du Nord se lâche sur l\'île espagnole de la fête.',60],
+    [1520,'Hollywood Girls',     'divertissement','Des françaises vivent le rêve américain à Los Angeles.',60],
+    [1620,'Serieland',           'serie', 'Les meilleures séries américaines en version française.',60],
+    [1750,'Les Princes de l\'amour','divertissement','Des princes cherchent l\'amour parmi plusieurs prétendantes.',60],
+    [1900,'W9 soir',             'info',  'L\'actualité du soir sur W9.',20],
+    [1920,'Woh ! W9 offre des sous','divertissement','Des candidats tentent leur chance pour gagner de l\'argent.',60],
+    [2020,'Film : Fast & Furious','film', 'Dom Toretto et Brian O\'Conner unissent leurs forces contre un ennemi commun.',120],
+    [2220,'Scènes de ménages',   'serie', 'Les couples de M6 group dans leurs situations les plus drôles.',30],
+    [2250,'La Quotidienne',      'divertissement','Retour sur les meilleurs moments de la journée TV.',30],
+  ],
+  // 10 - TMC
+  [ [700,'Squeezie matin',       'divertissement','Le meilleur du web et des réseaux sociaux pour démarrer la journée.',60],
+    [800,'Malcolm',              'serie', 'La série culte des années 2000 avec Frankie Muniz en ado rebelle.',60],
+    [900,'Les Simpson',          'serie', 'Homer et sa famille dans leurs aventures à Springfield.',60],
+    [1000,'Kaamelott',           'serie', 'Alexandre Astier et ses chevaliers dans leurs aventures médiévales cocasses.',60],
+    [1100,'Bienvenue chez les Kaulitz','serie','La télé-réalité musicale sur les jumeaux de Tokio Hotel.',60],
+    [1200,'JT 12H45',            'info',  'Le point de mi-journée avec les dernières informations.',30],
+    [1230,'Quotidien',           'divertissement','Yann Barthès et son équipe passent l\'actu au crible avec humour.',60],
+    [1330,'Film : Spider-Man',   'film',  'Peter Parker affronte Green Goblin dans les rues de New York.',121],
+    [1531,'Film : Avengers',     'film',  'Les super-héros Marvel s\'unissent contre Thanos dans une bataille épique.',149],
+    [1900,'JT 19H',              'info',  'Le journal du soir de TMC avec analyse des sujets du jour.',30],
+    [1930,'The Voice highlights', 'divertissement','Les plus belles performances et les moments forts de la saison.',60],
+    [2030,'Shark Tank France',   'divertissement','Des entrepreneurs pitchent leur projet devant les investisseurs.',90],
+    [2200,'Nikola Tesla',        'documentaire', 'Portrait de l\'inventeur génial du courant alternatif.',90],
+    [2330,'Comedy Club',         'divertissement','Les meilleurs humoristes français sur scène pour une nuit de rires.',60],
+  ],
+  // 11 - TFX
+  [ [700,'Disney Channel Matin', 'divertissement','Les héros Disney dans leurs meilleures aventures pour toute la famille.',120],
+    [900,'Miraculous',           'serie', 'Ladybug et Chat Noir protègent Paris des attaques d\'Hawk Moth.',60],
+    [1000,'Totally Spies',       'serie', 'Sam, Clover et Alex en mission secrète pour WOOHP.',60],
+    [1100,'Les Tortues Ninja',   'serie', 'Leonardo, Donatello, Raphael et Michelangelo contre les Foot Clan.',60],
+    [1200,'JT 12H',              'info',  'L\'actualité du jour en 20 minutes sur TFX.',20],
+    [1220,'Camping Paradis',     'serie', 'Tom Delormes et son équipe accueillent de nouveaux vacanciers.',60],
+    [1320,'Joséphine, ange gardien','serie','La charmante ange gardien aide des familles en difficulté.',60],
+    [1420,'Plus belle la vie',   'serie', 'Retrouvez le feuilleton marseillais dans un épisode inédit.',30],
+    [1450,'Film : Les Bronzés',  'film',  'La bande de Saint-Tropez dans un club de vacances mémorable.',95],
+    [1625,'Film : Les Bronzés font du ski','film','La bande s\'éclate sur les pistes de ski dans la neige.',100],
+    [1935,'The Voice Kids',      'divertissement','Les jeunes talents s\'affrontent pour décrocher le titre de The Voice Kids.',120],
+    [2135,'Star Search',         'divertissement','Compétition de talents avec des candidats venus de toute la France.',90],
+    [2305,'Late Night Comedy',   'divertissement','Le meilleur de l\'humour américain adapté en français.',60],
+  ],
+  // 12 - NRJ 12
+  [ [600,'NRJ Morning',          'divertissement','La matinale musicale et fun de NRJ 12 pour bien démarrer.',90],
+    [730,'Wesh Morray',          'divertissement','Le mag jeunesse décalé qui traite l\'actu avec humour.',60],
+    [830,'La Recrue',            'serie', 'Drame policier américain : un jeune avocat navigue dans les méandres du crime.',60],
+    [930,'Friends',              'serie', 'Les six amis new-yorkais dans leurs aventures quotidiennes légendaires.',60],
+    [1030,'How I Met Your Mother','serie','Ted raconte à ses enfants l\'histoire de sa rencontre avec leur mère.',60],
+    [1130,'Two and a Half Men',  'serie', 'Charlie, Alan et Jake dans leurs situations absurdes à Malibu.',60],
+    [1230,'JT NRJ 12',           'info',  'Les infos du midi en version concise et percutante.',20],
+    [1250,'The Big Bang Theory', 'serie', 'Sheldon, Leonard et leurs amis physiciens face aux défis de la vie.',60],
+    [1350,'Brooklyn Nine-Nine',  'serie', 'Le commissariat le plus déjanté de New York dirigé par Holt.',60],
+    [1450,'Modern Family',       'serie', 'Trois familles recomposées vivent sous le même toit dans la banlieue de Los Angeles.',60],
+    [1550,'Supergirl',           'serie', 'Kara Danvers protège la ville de National City sous son identité secrète.',60],
+    [1650,'The Flash',           'serie', 'Barry Allen utilise ses super-pouvoirs pour combattre le crime à Central City.',60],
+    [1750,'Arrow',               'serie', 'Oliver Queen devient le justicier masqué de Star City.',60],
+    [1850,'Charmed',             'serie', 'Les trois sœurs Halliwell utilisent leurs pouvoirs de sorcières pour le bien.',60],
+    [1950,'JT du soir NRJ 12',   'info',  'L\'actualité de la soirée en bref.',20],
+    [2010,'Film : Hunger Games', 'film',  'Katniss Everdeen s\'engage dans les Jeux de la Faim pour sauver son jeune frère.',142],
+    [2232,'Paranormal Night',    'documentaire', 'Enquêtes sur les phénomènes inexpliqués et les lieux hantés.',60],
+  ],
+  // 13 - LCP
+  [ [600,'LCP Matin',            'info',  'La matinale politique et parlementaire de LCP.',120],
+    [800,'Parlement hebdo',      'info',  'Retour sur les grandes décisions de la semaine au Parlement.',60],
+    [900,'Bibliothèque Médicis', 'documentaire', 'Rencontre avec les auteurs primés du Médicis dans leur univers.',60],
+    [1000,'Le Monde en face',    'documentaire', 'Grand format documentaire sur les enjeux contemporains.',90],
+    [1130,'La Faute à l\'Europe','info',  'Débat sur les politiques européennes et leur impact sur les citoyens.',30],
+    [1200,'Journal LCP',         'info',  'L\'actualité politique française et internationale à midi.',30],
+    [1230,'Questions d\'info',   'info',  'Décryptage approfondi avec les journalistes et experts politiques.',60],
+    [1330,'L\'Assemblée nationale en direct','info','Retransmission des débats parlementaires du jour.',120],
+    [1530,'Ripostes',            'info',  'Serge Moati reçoit des personnalités politiques pour un débat ouvert.',90],
+    [1700,'Droit de suite',      'info',  'Enquête journalistique sur les dossiers sensibles de la politique.',60],
+    [1800,'Journal LCP soir',    'info',  'Le journal politique du soir avec analyses et commentaires.',30],
+    [1830,'Carnets de campagne', 'info',  'Immersion dans les territoires français pour comprendre leurs enjeux.',60],
+    [1930,'Après le JT',         'info',  'Débat post-journal avec politologues et journalistes.',60],
+    [2030,'L\'Hémicycle',        'info',  'Magazine hebdomadaire de la vie parlementaire française.',60],
+    [2130,'Séance publique',     'info',  'Retour en images sur les moments forts des séances parlementaires.',60],
+    [2230,'Nuit politique',      'info',  'Analyse nocturne des événements politiques de la journée.',90],
+  ],
+  // 14 - France 4
+  [ [700,'Zouzous',              'divertissement','Les programmes jeunesse du matin pour les tout-petits.',120],
+    [900,'Okoo',                 'divertissement','Dessins animés et aventures pour les enfants de 6 à 12 ans.',120],
+    [1100,'Les Minikeums',       'divertissement','Émissions jeunesse colorées et éducatives de France 4.',60],
+    [1200,'Tom & Jerry',         'serie', 'Le chat et la souris dans leurs poursuites éternelles et hilarantes.',30],
+    [1230,'Looney Tunes',        'serie', 'Bugs Bunny, Daffy Duck et toute la bande dans leurs aventures classiques.',30],
+    [1300,'Scooby-Doo',          'serie', 'Scooby et sa bande élucident des mystères dans des endroits hanités.',60],
+    [1400,'Pokémon',             'serie', 'Sacha et Pikachu continuent leur aventure pour devenir Maître Pokémon.',60],
+    [1500,'Dragon Ball Z',       'serie', 'Goku et ses amis protègent la Terre des envahisseurs extraterrestres.',60],
+    [1600,'Naruto',              'serie', 'Naruto Uzumaki veut devenir le plus grand ninja de son village.',60],
+    [1700,'One Piece',           'serie', 'Luffy et l\'équipage des Chapeaux de Paille cherchent le trésor légendaire.',60],
+    [1800,'Koh-Lanta Juniors',   'divertissement','Des enfants vivent l\'aventure Koh-Lanta dans une version adaptée.',60],
+    [1900,'The Voice Junior',    'divertissement','Les jeunes talents chantent pour convaincre les coachs de les prendre.',60],
+    [2000,'Culture Prime',       'documentaire', 'Les tendances culturelles vues par les créateurs de contenus.',60],
+    [2100,'Saison 2 : Drama Club','serie','Des lycéens montent un spectacle tout en gérant leurs vies tumultueuses.',60],
+    [2200,'Nuit France 4',       'divertissement','Les meilleures rediffusions de la nuit en sélection spéciale.',120],
+  ],
+  // 15 - BFM TV
+  [ [600,'BFM Matin',            'info',  'Toute l\'actualité en continu dès 6h du matin avec les journalistes de BFM.',120],
+    [800,'BFM Business Matin',   'info',  'L\'actualité économique et financière du matin.',60],
+    [900,'Le Grand Rendez-Vous', 'info',  'L\'interview politique exclusive du dimanche matin.',60],
+    [1000,'Première Edition',    'info',  'Le débrief de l\'actualité avec les rédacteurs en chef de BFM.',60],
+    [1100,'BFM Story',           'info',  'Le décryptage en profondeur des grandes affaires du moment.',60],
+    [1200,'BFM Midi',            'info',  'Le journal de la mi-journée avec les dernières dépêches.',60],
+    [1300,'L\'Heure des Pros',   'info',  'Pascal Praud et ses invités débattent des sujets brûlants.',120],
+    [1500,'BFM Enquêtes',        'info',  'Reportages et investigations sur les faits divers marquants.',60],
+    [1600,'Chroniques criminelles','info','Retour sur les grandes affaires judiciaires françaises.',60],
+    [1700,'BFM Grand Soir',      'info',  'Le journal de la fin d\'après-midi avec le point complet.',60],
+    [1800,'Toute l\'actu en direct','info','Suivi en temps réel de l\'actualité nationale et internationale.',60],
+    [1900,'Journal BFM 19H',     'info',  'Le grand journal du soir de BFM TV.',60],
+    [2000,'BFM Politique',       'info',  'Débat politique avec les responsables des partis français.',60],
+    [2100,'Le Dossier du Soir',  'info',  'Enquête approfondie sur un sujet d\'actualité majeur.',60],
+    [2200,'Nuit BFM',            'info',  'L\'actualité en continu toute la nuit avec les journalistes de permanence.',360],
+  ],
+  // 16 - CNews
+  [ [600,'CNews Matin',          'info',  'La matinale d\'information avec les titres du jour et les premiers invités.',120],
+    [800,'Bonjour chez vous !',  'divertissement','Pascal Praud reçoit des personnalités du monde politique et culturel.',120],
+    [1000,'L\'Heure des Pros',   'info',  'Débat animé sur les sujets qui font l\'actualité avec des experts.',120],
+    [1200,'CNews Midi',          'info',  'Le journal complet de mi-journée avec analyses et commentaires.',60],
+    [1300,'Détective',           'info',  'Enquêtes sur les grandes affaires criminelles non résolues.',60],
+    [1400,'Faits divers',        'info',  'Reportages et investigations sur les faits divers marquants de France.',60],
+    [1500,'A vos sources !',     'info',  'Le magazine du journalisme et des médias avec ses invités spéciaux.',60],
+    [1600,'En quête d\'esprit',  'info',  'Débat d\'idées et confrontation des opinions sur les grands sujets de société.',90],
+    [1800,'Face à l\'info',      'info',  'Christine Kelly face aux personnalités de l\'actualité politique.',60],
+    [1900,'Le JT de CNews',      'info',  'Le journal du soir de CNews avec toute l\'actualité du jour.',60],
+    [2000,'L\'info du vrai',     'info',  'Yves Calvi vérifie les faits et démêle le vrai du faux.',60],
+    [2100,'Punchline',           'info',  'Debate politique avec les acteurs de l\'actualité.',60],
+    [2200,'La Nuit de l\'info',  'info',  'Retour sur les temps forts de la journée.',120],
+  ],
+  // 17 - CSTAR
+  [ [700,'Happy Fruits',         'divertissement','Les programmes enfants de CSTAR pour une matinée colorée.',60],
+    [800,'American Dad !',       'serie', 'Stan Smith, agent de la CIA, et sa famille excentrique dans leurs aventures.',60],
+    [900,'South Park',           'serie', 'Les quatre garçons de South Park dans des épisodes satiriques et décalés.',60],
+    [1000,'Family Guy',          'serie', 'Peter Griffin et sa famille dans leurs aventures improbables à Quahog.',60],
+    [1100,'Bob\'s Burgers',      'serie', 'Bob Belcher et sa famille gèrent leur restaurant avec humour.',60],
+    [1200,'Futurama',            'serie', 'Fry, Leela et Bender dans le futur loufoque de la Planète Express.',60],
+    [1300,'Simpsons Marathon',   'serie', 'Une sélection des meilleurs épisodes des Simpsons.',120],
+    [1500,'Film : Jackass',      'film',  'Les cascades et blagues idiotes des joyeux lurons de Jackass.',90],
+    [1630,'Ridiculousness',      'divertissement','Les vidéos virales les plus improbables commentées avec humour.',60],
+    [1730,'CSTAR Clip Show',     'musique','Les meilleurs clips de la semaine en version intégrale.',60],
+    [1830,'Concert Live : Indochine','musique','Concert exceptionnel d\'Indochine filmé à l\'AccorHotels Arena.',120],
+    [2030,'Les Inrocks TV',      'musique','Le magazine musical de référence sur les artistes émergents.',60],
+    [2130,'Film : Les Valseuses','film',  'La comédie road-movie culte de Bertrand Blier avec Depardieu et Dewaere.',105],
+    [2315,'Best of Comédie',     'divertissement','Les meilleures scènes des comédies françaises et américaines.',60],
+  ],
+  // 18 - Gulli
+  [ [600,'Gulli Matin',          'divertissement','Les programmes jeunesse pour un réveil en douceur.',120],
+    [800,'Miraculous',           'serie', 'Ladybug et Chat Noir dans de nouvelles aventures parisiennes palpitantes.',60],
+    [900,'Oggy et les Cafards',  'serie', 'Oggy le chat affronte les cafards Joey, Dee Dee et Marky.',30],
+    [930,'Calimero',             'serie', 'Le petit poussin noir avec sa coquille sur la tête part à l\'aventure.',30],
+    [1000,'Tom-Tom et Nana',     'serie', 'Les aventures du duo de frère et sœur dans la brasserie familiale.',30],
+    [1030,'Les Sisters',         'serie', 'Wendy et Marine, deux soeurs que tout oppose, vivent ensemble.',30],
+    [1100,'Le Bus Magique',      'serie', 'Mme Valène et ses élèves font des sorties scolaires extraordinaires.',30],
+    [1130,'Pat Patrouille',      'serie', 'La Pat Patrouille et ses chiens héroïques sauvent la ville encore une fois.',30],
+    [1200,'Bluey',               'serie', 'Bluey le chiot australien apprend de nouvelles choses chaque jour.',30],
+    [1230,'Peppa Pig',           'serie', 'Peppa et ses amis dans leurs aventures du quotidien.',30],
+    [1300,'Gulli Junior',        'divertissement','Magazine pour les enfants avec jeux, quiz et bons plans.',60],
+    [1400,'Star Wars Rebels',    'serie', 'Un groupe de rebelles affronte l\'Empire galactique dans une galaxie lointaine.',60],
+    [1500,'Gravity Falls',       'serie', 'Dipper et Mabel Pines élucident les mystères de Gravity Falls.',60],
+    [1600,'Avatar : le dernier maître de l\'air','serie','Aang, le dernier Maître de l\'Air, doit sauver le monde.',60],
+    [1700,'Mon petit poney',     'serie', 'Twilight Sparkle et ses amis vivent à Equestria dans la joie et la magie.',60],
+    [1800,'Gulli Soir',          'divertissement','Jeux et surprises pour toute la famille en début de soirée.',60],
+    [1900,'Animaux & Cie',       'documentaire', 'Les animaux domestiques et sauvages vus par les enfants.',60],
+    [2000,'Les Z\'amours',       'divertissement','Bruno Guillon anime le jeu des couples pour voir qui se connaît le mieux.',60],
+    [2100,'Film : Ratatouille',  'film',  'Rémy, un rat parisien, rêve de devenir grand chef cuisinier.',111],
+    [2251,'Harry Potter',        'film',  'Harry Potter à l\'école des sorciers : la magie commence à Poudlard.',152],
+  ],
+  // 19 - TF1 Séries Films
+  [ [600,'TSF Matin',            'serie', 'Les meilleures séries américaines pour bien commencer la journée.',120],
+    [800,'NCIS',                 'serie', 'L\'équipe des enquêteurs navals résout des affaires criminelles complexes.',60],
+    [900,'Esprits Criminels',    'serie', 'L\'unité des sciences du comportement du FBI traque les tueurs en série.',60],
+    [1000,'Grey\'s Anatomy',     'serie', 'Les médecins du Seattle Grace Hospital jonglent entre vie amoureuse et urgences.',60],
+    [1100,'Castle',              'serie', 'L\'écrivain Richard Castle aide l\'inspectrice Beckett à résoudre des meurtres.',60],
+    [1200,'The Mentalist',       'serie', 'Patrick Jane utilise ses dons d\'observation pour résoudre des crimes.',60],
+    [1300,'Bones',               'serie', 'La légiste Temperance Brennan et l\'agent Booth forment un duo redoutable.',60],
+    [1400,'Film : Mission Impossible','film','Ethan Hunt accepte une mission impossible qui pourrait sauver le monde.',127],
+    [1607,'Monk',                'serie', 'Le détective obsessionnel Adrian Monk résout des crimes malgré sa phobie.',60],
+    [1707,'Lie to Me',           'serie', 'Cal Lightman lit les émotions sur les visages pour démasquer les menteurs.',60],
+    [1807,'Perception',          'serie', 'Un professeur de neurologie aide le FBI grâce à ses hallucinations.',60],
+    [1907,'Film : Taken',        'film',  'Un ex-agent de la CIA part retrouver sa fille kidnappée à Paris.',93],
+    [2100,'L.A. Law',            'serie', 'Les avocats de Los Angeles naviguent entre affaires et vie personnelle.',60],
+    [2200,'Cold Case',           'serie', 'L\'inspectrice Lilly Rush rouvre des affaires criminelles non résolues.',60],
+    [2300,'Without a Trace',     'serie', 'Le FBI enquête sur des disparitions mystérieuses à New York.',60],
+  ],
+  // 20 - L'Équipe
+  [ [600,'Le Multiplex Sportif', 'sport', 'Résumés et analyses de tous les sports de la nuit et du matin.',60],
+    [700,'Top of the Sport',     'sport', 'Le meilleur de l\'actualité sportive mondiale en images et en chiffres.',60],
+    [800,'L\'Équipe du Matin',   'sport', 'Le journal sportif du matin avec les transferts et les résultats.',60],
+    [900,'Rugby : Top 14',       'sport', 'Analyse complète des matchs du Top 14 avec les experts du rugby.',90],
+    [1030,'Tennis : ATP Best Of','sport', 'Les plus beaux points et moments des tournois ATP de la semaine.',60],
+    [1130,'Cyclisme : Tour de France Archives','sport','Retour sur les étapes les plus mythiques du Tour de France.',60],
+    [1230,'Midi Sport',          'sport', 'Le journal sportif de mi-journée avec les dernières informations.',30],
+    [1300,'Football : Bundesliga','sport','Résumés et analyses des matchs de championnat allemand.',90],
+    [1430,'Basket : NBA Highlights','sport','Les meilleures actions et dunks de la nuit NBA.',60],
+    [1530,'Football Américain : NFL','sport','Les moments forts des matchs de la semaine NFL.',90],
+    [1700,'Formule E : Race Recap','sport','Retour complet sur la dernière course de Formule E électrique.',60],
+    [1800,'L\'Équipe du Soir',   'sport', 'Le grand journal sportif du soir avec toutes les infos.',60],
+    [1900,'Mercato : Les Transferts','sport','Toute l\'actualité des transferts et rumeurs du mercato.',60],
+    [2000,'Football : Ligue 1',  'sport', 'Retransmission des matchs de Ligue 1 en direct et en intégral.',120],
+    [2200,'After Football',      'sport', 'Débat et analyse post-match avec les consultants de L\'Équipe.',60],
+    [2300,'Sport Late Night',    'sport', 'Les résultats des compétitions nocturnes et les commentaires des experts.',60],
+  ],
+  // 21 - 6ter
+  [ [600,'6ter Matin',           'divertissement','La matinale de 6ter pour bien démarrer la journée en famille.',90],
+    [730,'Plus belle la vie',    'serie', 'Retrouvez les épisodes classiques du feuilleton marseillais.',60],
+    [830,'Petits plats en équilibre','divertissement','Des chefs cuisinent des recettes équilibrées et savoureuses.',30],
+    [900,'50 min inside',        'divertissement','Les coulisses du monde du spectacle et les dernières sorties.',60],
+    [1000,'Recherche appartement','divertissement','Stéphane Plaza aide des familles à trouver leur logement idéal.',60],
+    [1100,'La Belle Saison',     'documentaire', 'Les plus belles régions de France à la rencontre de leurs habitants.',60],
+    [1200,'JT 12H',              'info',  'L\'actualité du midi en version synthétique sur 6ter.',20],
+    [1220,'Mon beau château',    'divertissement','Des acheteurs visitent les plus beaux châteaux de France.',60],
+    [1320,'Maison à vendre',     'divertissement','Stéphane Plaza aide des propriétaires à vendre leur bien.',60],
+    [1420,'L\'amour est dans le pré','divertissement','Des agriculteurs cherchent l\'amour parmi leurs prétendants.',60],
+    [1520,'Bienvenue chez nous', 'divertissement','Des candidats s\'invitent mutuellement et votent pour le meilleur hôte.',60],
+    [1620,'Petits plats en équilibre','divertissement','Recettes légères et conseils nutritionnels du chef.',30],
+    [1700,'M6 Music 6ter',       'musique','Les clips musicaux les plus tendances du moment.',60],
+    [1800,'JT 6ter soir',        'info',  'Le point actualité du soir.',20],
+    [1820,'N\'oubliez pas les paroles','divertissement','Nagui et les candidats dans le jeu musical le plus populaire.',60],
+    [1920,'Scènes de ménages',   'serie', 'Série de sketches humoristiques sur la vie de couple.',60],
+    [2020,'Cousu main',          'divertissement','Des couturières s\'affrontent pour réaliser les plus beaux vêtements.',90],
+    [2150,'Film : Le Dîner de cons','film','Pierre Brochant invite un idiot à son dîner mais c\'est lui qui déchante.',80],
+  ],
+  // 22 - Numéro 23
+  [ [600,'Morning 23',           'divertissement','La matinale de Numéro 23 avec musique, culture et actualité.',90],
+    [730,'Diversités',           'documentaire', 'Portraits de personnalités issues de la diversité culturelle française.',60],
+    [830,'Street Art',           'documentaire', 'Découverte des artistes urbains qui transforment nos villes.',60],
+    [930,'Ma France Plurielle',  'documentaire', 'Les visages de la France multiculturelle à travers ses territoires.',60],
+    [1030,'Mode & Culture',      'divertissement','Les tendances de la mode vues par des créateurs engagés.',60],
+    [1130,'Cinéma du Monde',     'film',  'Film international mis en avant : cinéma africain, asiatique ou latino.',90],
+    [1300,'JT 23',               'info',  'Le journal de mi-journée de Numéro 23.',30],
+    [1330,'Concerts & Événements','musique','Retour sur les grands événements musicaux et culturels.',60],
+    [1430,'Cuisine du Monde',    'divertissement','Des chefs partagent les recettes de leurs pays d\'origine.',60],
+    [1530,'Human',               'documentaire', 'Témoignages d\'hommes et femmes du monde entier sur leurs vies.',90],
+    [1700,'Afrique Célèbre',     'documentaire', 'Portraits de personnalités africaines qui marquent leur époque.',60],
+    [1800,'Journal du Soir',     'info',  'L\'actualité vue différemment sur Numéro 23.',30],
+    [1830,'Le Grand Oral',       'info',  'Débat d\'idées avec des acteurs culturels et associatifs.',60],
+    [1930,'Film : It\'s a Free World','film','Un drame social britannique sur les conditions de travail des migrants.',96],
+    [2106,'World Music Concert', 'musique','Concert live d\'un artiste world music sur Numéro 23.',90],
+    [2236,'Génération Rap',      'musique','Documentaire sur la scène rap française et ses nouvelles générations.',60],
+  ],
+  // 23 - RMC Story
+  [ [600,'RMC Story Matin',      'documentaire', 'Documentaires et reportages pour bien commencer la journée.',120],
+    [800,'Les 100 plus grandes catastrophes','documentaire','Retour sur les pires catastrophes naturelles et industrielles.',60],
+    [900,'Crimes parfaits',      'documentaire', 'Reconstitution des crimes les plus incroyables et inexplicables.',60],
+    [1000,'Air Crash Investigation','documentaire','Analyse détaillée des accidents d\'aviation les plus marquants.',60],
+    [1100,'Mayday : Air Disaster','documentaire','Reconstitutions dramatiques des enquêtes sur les crashs aériens.',60],
+    [1200,'Top Gear',            'divertissement','Jeremy Clarkson et ses acolytes testent les voitures les plus folles.',60],
+    [1300,'Wheeler Dealers',     'divertissement','Mike Brewer restaure des voitures d\'occasion pour les revendre.',60],
+    [1400,'Fast N\' Loud',       'divertissement','Richard Rawlings transforme des épaves en bolides de course.',60],
+    [1500,'American Pickers',    'divertissement','Des chineurs professionnels sillonnent l\'Amérique à la recherche de trésors.',60],
+    [1600,'Pawn Stars',          'divertissement','Un prêteur sur gages de Las Vegas évalue des objets extraordinaires.',60],
+    [1700,'Storage Wars',        'divertissement','Des enchérisseurs se battent pour gagner le contenu de box de stockage.',60],
+    [1800,'Les Rois du Dessin',  'divertissement','Des tatoueurs s\'affrontent pour décrocher le titre de meilleur artiste.',60],
+    [1900,'Deadliest Catch',     'documentaire', 'Des pêcheurs de crabe risquent leur vie dans les eaux glacées d\'Alaska.',60],
+    [2000,'Star Trek : Voyager', 'serie', 'L\'équipage du Voyager cherche son chemin à travers l\'espace inconnu.',60],
+    [2100,'Film : Gladiator',    'film',  'Maximus, général romain, cherche vengeance contre l\'empereur Commode.',155],
+    [2335,'Crimes de Minuit',    'documentaire', 'Les affaires criminelles les plus troublantes de la nuit.',60],
+  ],
+  // 24 - RMC Découverte
+  [ [600,'RMC Découverte Matin', 'documentaire', 'Les documentaires du matin sur la nature, la science et l\'histoire.',120],
+    [800,'Sur la route des volcans','documentaire','Des volcanologues explorent les volcans les plus actifs du monde.',60],
+    [900,'Mega Structures',      'documentaire', 'Les plus grands projets de génie civil à travers le monde.',60],
+    [1000,'Ultimate Factories',  'documentaire', 'Les usines les plus performantes du monde et leurs secrets de fabrication.',60],
+    [1100,'Histoire de l\'Humanité','documentaire','Les grandes civilisations et leur impact sur notre monde actuel.',90],
+    [1230,'Secrets de l\'Univers','documentaire','Exploration des phénomènes cosmiques les plus mystérieux.',60],
+    [1330,'Chasse au Trésor',    'documentaire', 'Des explorateurs cherchent les trésors cachés de l\'histoire.',60],
+    [1430,'Archéologie Mystérieuse','documentaire','Découverte de sites archéologiques aux secrets encore non élucidés.',60],
+    [1530,'Wild Pacific',        'documentaire', 'La faune et la flore extraordinaires de l\'océan Pacifique.',60],
+    [1630,'Africa\'s Wild Kingdom','documentaire','Le règne animal africain filmé au plus près pendant une année complète.',60],
+    [1730,'Expedition Unknown',  'documentaire', 'Josh Gates part à la recherche des plus grands mystères de l\'histoire.',60],
+    [1830,'Build it Bigger',     'documentaire', 'Les ingénieurs les plus innovants construisent des infrastructures monumentales.',60],
+    [1930,'D-Day : La Bataille', 'documentaire', 'Reconstitution minutieuse du débarquement du 6 juin 1944.',90],
+    [2100,'Cosmos : Une odyssée','documentaire', 'Neil deGrasse Tyson nous emmène dans un voyage scientifique à travers l\'Univers.',60],
+    [2200,'Chasing Ice',         'documentaire', 'Des glaciologues documentent la fonte spectaculaire des glaciers polaires.',75],
+    [2315,'Nuit Découverte',     'documentaire', 'Sélection de documentaires pour la nuit sur RMC Découverte.',120],
+  ],
+  // 25 - Chérie 25
+  [ [600,'Chérie Matin',         'divertissement','La matinale douce et bienveillante de Chérie 25.',90],
+    [730,'Un dîner presque parfait','divertissement','Des candidats s\'invitent à dîner et notent les performances culinaires.',60],
+    [830,'Quatre mariages pour une lune de miel','divertissement','Quatre futures mariées évaluent leurs cérémonies respectives.',60],
+    [930,'Mon plus beau mariage','divertissement','Des couples racontent leur mariage de rêve sous toutes ses facettes.',60],
+    [1030,'Mariage à tout prix', 'divertissement','Des fiancés gèrent le stress du grand jour avec l\'aide de pros.',60],
+    [1130,'Déco : Mon Intérieur','divertissement','Des designers transforment des intérieurs ternes en espaces de rêve.',60],
+    [1230,'JT Chérie',           'info',  'L\'actualité du midi sur Chérie 25.',20],
+    [1250,'Coup de foudre',      'serie', 'Romantic comedy : deux personnes que tout oppose tombent amoureuses.',60],
+    [1350,'L\'Amour est dans le pré','divertissement','Des agriculteurs cherchent leur âme sœur parmi les prétendants.',60],
+    [1450,'Chasseurs d\'appart', 'divertissement','Des couples cherchent le logement idéal avec l\'aide d\'un expert.',60],
+    [1550,'Cuisine maison',      'divertissement','Des chefs partagent leurs recettes maison simples et délicieuses.',60],
+    [1650,'Beauté & Bien-être',  'divertissement','Conseils beauté, maquillage et soins pour se sentir bien.',60],
+    [1750,'Mon grand amour',     'serie', 'Feuilleton sentimental sur les relations amoureuses contemporaines.',60],
+    [1900,'JT du soir Chérie',   'info',  'L\'actualité du soir vue par Chérie 25.',20],
+    [1920,'Histoires d\'amour',  'divertissement','Des témoignages touchants de couples sur leur histoire sentimentale.',60],
+    [2020,'Film : Bridget Jones','film',  'Bridget tient son journal intime tout en cherchant l\'amour parfait.',97],
+    [2157,'Film : Mamma Mia',    'film',  'Une mariée invite trois hommes qui pourraient être son père à son mariage.',108],
+    [2345,'Love Stories',        'divertissement','Les plus belles histoires d\'amour de la télé en replay de nuit.',60],
+  ],
+];
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let selectedDay = 0;
+let searchQuery = '';
+
+// ─── TIME UTILS ─────────────────────────────────────────────────────────────
+function getMinutes() {
+  const now = new Date();
+  return now.getHours()*60 + now.getMinutes();
+}
+
+function fmt(hhmm) {
+  const h = Math.floor(hhmm/100), m = hhmm%100;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function timeToMin(hhmm) {
+  return Math.floor(hhmm/100)*60 + hhmm%100;
+}
+
+// ─── CLOCK ──────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clockDisplay').innerHTML =
+    `${days[now.getDay()]} ${now.getDate()} ${months[now.getMonth()]} — <span>${hh}:${mm}:${ss}</span>`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── DAYS BAR ───────────────────────────────────────────────────────────────
+function buildDays() {
+  const bar = document.getElementById('dayBar');
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const today = new Date();
+  // Remove previously generated day buttons (not the Ce soir btn)
+  bar.querySelectorAll('.day-btn:not(.ce-soir-btn)').forEach(b => b.remove());
+  for (let i=-1; i<=5; i++) {
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    const label = i===0 ? 'Aujourd\'hui' : i===-1 ? 'Hier' : i===1 ? 'Demain' :
+      `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+    const btn = document.createElement('button');
+    btn.className = 'day-btn' + (i===0 ? ' active' : '');
+    btn.dataset.day = i;
+    btn.textContent = label;
+    bar.appendChild(btn);
+  }
+  bar.querySelectorAll('.day-btn:not(.ce-soir-btn)').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      selectedDay = parseInt(btn.dataset.day);
+      bar.querySelectorAll('.day-btn:not(.ce-soir-btn)').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      render();
+      scrollToSoir(false);
+    });
+  });
+}
+
+
+
+// ─── SEARCH ─────────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', e=>{
+  searchQuery = e.target.value.toLowerCase();
+  render();
+});
+
+// ─── CE SOIR ────────────────────────────────────────────────────────────────
+function scrollToSoir(switchDay = true) {
+  if (switchDay && selectedDay !== 0) {
+    selectedDay = 0;
+    document.querySelectorAll('.day-btn:not(.ce-soir-btn)').forEach(b => b.classList.remove('active'));
+    const todayBtn = document.querySelector('.day-btn[data-day="0"]');
+    if (todayBtn) todayBtn.classList.add('active');
+    render();
+  }
+  setTimeout(() => {
+    const scroll = document.getElementById('tracksScroll');
+    const track = document.querySelector('.programs-track');
+    if (!scroll || !track) return;
+    const progs = track.querySelectorAll('.program');
+    let target = null;
+    progs.forEach(p => { if (!target && p.dataset.start >= '21:00') target = p; });
+    if (!target) target = progs[progs.length - 1];
+    if (target) scroll.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+  }, 150);
+}
+
+
+function render() {
+  const now = getMinutes();
+  const isToday = selectedDay === 0;
+
+  const channelsCol = document.getElementById('channelsCol');
+  const tracksInner = document.getElementById('tracksInner');
+  const tracksScroll = document.getElementById('tracksScroll');
+
+  let labelsHtml = '';
+  let tracksHtml = '';
+  let anyVisible = false;
+
+  channels.forEach((ch, ci) => {
+    const progs = programTemplates[ci];
+
+    const filtered = progs.filter(p => {
+      const [start, title, genre,,] = p;
+      if (searchQuery && !title.toLowerCase().includes(searchQuery)) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) return;
+    anyVisible = true;
+
+    labelsHtml += `<div class="channel-label" style="animation-delay:${ci*0.04}s">
+      <div class="channel-logo" style="background:${ch.color}">${ch.num}</div>
+      <div class="channel-name">${ch.name}</div>
+    </div>`;
+
+    tracksHtml += `<div class="programs-track" id="track-${ci}" style="animation-delay:${ci*0.04}s">`;
+
+    filtered.forEach(p => {
+      const [start, title, genre, desc, dur] = p;
+      const startMin = timeToMin(start);
+      const endMin = startMin + dur;
+      const end = Math.floor(endMin/60)*100 + (endMin%60);
+      const gi = genreInfo(genre);
+      const isLive = isToday && now >= startMin && now < endMin;
+      const isPast = isToday && now >= endMin;
+      const progress = isLive ? Math.round((now-startMin)/(endMin-startMin)*100) : 0;
+      const widthPx = Math.max(140, dur * 2.8);
+
+      tracksHtml += `<div class="program${isLive?' live':''}${isPast?' past':''}"
+        style="min-width:${widthPx}px"
+        data-title="${title}" data-channel="${ch.name}" data-start="${fmt(start)}" data-end="${fmt(end)}"
+        data-desc="${desc}" data-genre="${genre}" data-gi-cls="${gi.cls}" data-gi-label="${gi.label}"
+        onclick="openModal(this)">
+        <div>
+          <div class="prog-time">${fmt(start)} – ${fmt(end)}</div>
+          <div class="prog-title">${title}</div>
+        </div>
+        <div class="prog-meta">
+          ${isLive ? '<div class="live-badge"><div class="live-dot"></div>En direct</div>' : ''}
+          <span class="prog-genre ${gi.cls}">${gi.label}</span>
+        </div>
+        ${isLive ? `<div class="prog-progress" style="width:${progress}%"></div>` : ''}
+      </div>`;
+    });
+
+    tracksHtml += `</div>`;
+  });
+
+  if (!anyVisible) {
+    channelsCol.innerHTML = '';
+    tracksInner.innerHTML = '<div class="empty-state">Aucun programme trouvé pour cette sélection.</div>';
+    return;
+  }
+
+  channelsCol.innerHTML = labelsHtml;
+  tracksInner.innerHTML = tracksHtml;
+
+  // Auto-scroll to live program on today
+  if (isToday) {
+    const firstTrack = tracksInner.querySelector('.programs-track');
+    if (firstTrack) {
+      const live = firstTrack.querySelector('.program.live');
+      if (live) {
+        setTimeout(() => {
+          tracksScroll.scrollTo({ left: live.offsetLeft - 20, behavior: 'smooth' });
+        }, 100);
+      }
+    }
+  }
+
+  // Mouse drag to scroll
+  let isDown = false, startX, scrollLeft;
+  tracksScroll.onmousedown = e => {
+    isDown = true;
+    startX = e.pageX - tracksScroll.offsetLeft;
+    scrollLeft = tracksScroll.scrollLeft;
+  };
+  tracksScroll.onmouseleave = () => isDown = false;
+  tracksScroll.onmouseup = () => isDown = false;
+  tracksScroll.onmousemove = e => {
+    if (!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - tracksScroll.offsetLeft;
+    tracksScroll.scrollLeft = scrollLeft - (x - startX);
+  };
+}
+
+
+// ─── MODAL ──────────────────────────────────────────────────────────────────
+function openModal(el) {
+  document.getElementById('mChannel').textContent = el.dataset.channel;
+  document.getElementById('mTitle').textContent = el.dataset.title;
+  document.getElementById('mTime').textContent = `${el.dataset.start} – ${el.dataset.end}`;
+  document.getElementById('mDesc').textContent = el.dataset.desc;
+  const gi = { cls: el.dataset.giCls, label: el.dataset.giLabel };
+  document.getElementById('mTags').innerHTML =
+    `<span class="modal-tag ${gi.cls}">${gi.label}</span>
+     <span class="modal-tag" style="background:rgba(255,255,255,0.07);color:var(--muted)">${el.dataset.channel}</span>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+document.getElementById('modalClose').addEventListener('click', ()=>{
+  document.getElementById('modalOverlay').classList.remove('open');
+});
+document.getElementById('modalOverlay').addEventListener('click', e=>{
+  if (e.target === document.getElementById('modalOverlay'))
+    document.getElementById('modalOverlay').classList.remove('open');
+});
+
+document.addEventListener('keydown', e=>{
+  if (e.key==='Escape') document.getElementById('modalOverlay').classList.remove('open');
+});
+
+// ─── INIT ───────────────────────────────────────────────────────────────────
+buildDays();
+render();
+</script>
+</body>
+</html>
