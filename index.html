@@ -48,35 +48,6 @@
     z-index: 100;
   }
 
-  .logo {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2rem;
-    letter-spacing: 0.08em;
-    color: var(--text);
-    display: flex; align-items: center; gap: 10px;
-  }
-
-  .logo-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 12px var(--accent);
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%,100% { opacity:1; transform:scale(1); }
-    50% { opacity:0.5; transform:scale(0.85); }
-  }
-
-  .current-time {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--muted);
-    letter-spacing: 0.1em;
-  }
-
-  .current-time span { color: var(--accent2); font-weight: 500; }
 
   /* DAY SELECTOR */
   .day-bar {
@@ -207,10 +178,54 @@
     letter-spacing: 0.05em;
   }
 
+  /* TIME RULER */
+  .time-ruler {
+    position: relative;
+    height: 28px;
+    margin-bottom: 2px;
+  }
+  .time-ruler span {
+    position: absolute;
+    top: 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .time-ruler-line {
+    position: absolute;
+    top: 20px;
+    width: 1px;
+    height: 8px;
+    background: var(--border);
+  }
+
+  /* NOW INDICATOR */
+  .now-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--live);
+    z-index: 20;
+    pointer-events: none;
+  }
+  .now-line::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -3px;
+    width: 8px;
+    height: 8px;
+    background: var(--live);
+    border-radius: 50%;
+  }
+
   /* PROGRAMS TRACK */
   .programs-track {
-    display: flex;
-    overflow-x: visible;
+    position: relative;
+    overflow: visible;
     border: 1px solid var(--border);
     border-left: none;
     border-radius: 0 8px 8px 0;
@@ -222,16 +237,17 @@
 
   /* PROGRAM CARD */
   .program {
-    flex-shrink: 0;
+    position: absolute;
+    top: 0;
+    bottom: 0;
     padding: 10px 14px;
     border-right: 1px solid var(--border);
     cursor: pointer;
     transition: background 0.2s;
-    position: relative;
     overflow: hidden;
-    min-width: 180px;
     display: flex; flex-direction: column; justify-content: space-between;
     min-height: 80px;
+    box-sizing: border-box;
   }
 
   .program:last-child { border-right: none; }
@@ -455,27 +471,33 @@
   }
 
 
+  @media (max-width: 600px) {
     header { padding: 14px 16px; }
     .main { padding: 12px 16px; }
     .day-bar, .filter-bar { padding: 12px 16px; }
     .channel-section { grid-template-columns: 80px 1fr; }
-    .channel-label { min-width: 80px; }
     .search-wrap { display: none; }
+
+    .channels-col { width: 56px; }
+    .channel-label {
+      min-width: 56px;
+      min-height: 50px;
+      padding: 6px 4px;
+      gap: 2px;
+    }
+    .channel-logo { width: 22px; height: 22px; font-size: 0.6rem; border-radius: 5px; }
+    .channel-num { font-size: 1rem; }
+    .channel-name { font-size: 0.5rem; }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">
-    <div class="logo-dot"></div>
-    Guide TV
-  </div>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
     <input class="search-input" type="text" placeholder="Rechercher..." id="searchInput">
   </div>
-  <div class="current-time" id="clockDisplay"></div>
 </header>
 
 <div class="day-bar" id="dayBar">
@@ -997,20 +1019,6 @@ function timeToMin(hhmm) {
   return Math.floor(hhmm/100)*60 + hhmm%100;
 }
 
-// ─── CLOCK ──────────────────────────────────────────────────────────────────
-function updateClock() {
-  const now = new Date();
-  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  const months = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-  const hh = String(now.getHours()).padStart(2,'0');
-  const mm = String(now.getMinutes()).padStart(2,'0');
-  const ss = String(now.getSeconds()).padStart(2,'0');
-  document.getElementById('clockDisplay').innerHTML =
-    `${days[now.getDay()]} ${now.getDate()} ${months[now.getMonth()]} — <span>${hh}:${mm}:${ss}</span>`;
-}
-setInterval(updateClock, 1000);
-updateClock();
-
 // ─── DAYS BAR ───────────────────────────────────────────────────────────────
 function buildDays() {
   const bar = document.getElementById('dayBar');
@@ -1059,16 +1067,22 @@ function scrollToSoir(switchDay = true) {
   }
   setTimeout(() => {
     const scroll = document.getElementById('tracksScroll');
-    const track = document.querySelector('.programs-track');
-    if (!scroll || !track) return;
-    const progs = track.querySelectorAll('.program');
-    let target = null;
-    progs.forEach(p => { if (!target && p.dataset.start >= '21:00') target = p; });
-    if (!target) target = progs[progs.length - 1];
-    if (target) scroll.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+    if (!scroll) return;
+    // Scroll to 21:00 position on the time axis
+    scroll.scrollTo({ left: minToPx(21 * 60) - 100, behavior: 'smooth' });
   }, 150);
 }
 
+
+// Time scale: pixels per minute
+const PX_PER_MIN = 3;
+const DAY_START = 6 * 60;   // 06:00
+const DAY_END = 26 * 60;    // 02:00 next day (26h)
+const TOTAL_WIDTH = (DAY_END - DAY_START) * PX_PER_MIN;
+
+function minToPx(min) {
+  return (min - DAY_START) * PX_PER_MIN;
+}
 
 function render() {
   const now = getMinutes();
@@ -1078,8 +1092,24 @@ function render() {
   const tracksInner = document.getElementById('tracksInner');
   const tracksScroll = document.getElementById('tracksScroll');
 
+  // Build time ruler
+  let rulerHtml = `<div class="time-ruler" style="width:${TOTAL_WIDTH}px;">`;
+  for (let h = 6; h <= 25; h++) {
+    const displayH = h >= 24 ? h - 24 : h;
+    const leftPx = minToPx(h * 60);
+    rulerHtml += `<span style="left:${leftPx}px">${String(displayH).padStart(2,'0')}:00</span>`;
+    rulerHtml += `<div class="time-ruler-line" style="left:${leftPx}px"></div>`;
+  }
+  // Now indicator on ruler
+  if (isToday && now >= DAY_START && now < DAY_END) {
+    rulerHtml += `<div class="now-line" style="left:${minToPx(now)}px;top:0;bottom:-9999px;height:9999px;"></div>`;
+  }
+  rulerHtml += `</div>`;
+
   let labelsHtml = '';
-  let tracksHtml = '';
+  // Spacer for ruler row in the channel column
+  labelsHtml += `<div style="height:28px;margin-bottom:2px;"></div>`;
+  let tracksHtml = rulerHtml;
   let anyVisible = false;
 
   channels.forEach((ch, ci) => {
@@ -1099,7 +1129,7 @@ function render() {
       <div class="channel-name">${ch.name}</div>
     </div>`;
 
-    tracksHtml += `<div class="programs-track" id="track-${ci}" style="animation-delay:${ci*0.04}s">`;
+    tracksHtml += `<div class="programs-track" id="track-${ci}" style="width:${TOTAL_WIDTH}px;min-height:80px;animation-delay:${ci*0.04}s">`;
 
     filtered.forEach(p => {
       const [start, title, genre, desc, dur] = p;
@@ -1110,10 +1140,12 @@ function render() {
       const isLive = isToday && now >= startMin && now < endMin;
       const isPast = isToday && now >= endMin;
       const progress = isLive ? Math.round((now-startMin)/(endMin-startMin)*100) : 0;
-      const widthPx = Math.max(140, dur * 2.8);
+
+      const leftPx = minToPx(startMin);
+      const widthPx = dur * PX_PER_MIN;
 
       tracksHtml += `<div class="program${isLive?' live':''}${isPast?' past':''}"
-        style="min-width:${widthPx}px"
+        style="left:${leftPx}px;width:${widthPx}px"
         data-title="${title}" data-channel="${ch.name}" data-start="${fmt(start)}" data-end="${fmt(end)}"
         data-desc="${desc}" data-genre="${genre}" data-gi-cls="${gi.cls}" data-gi-label="${gi.label}"
         onclick="openModal(this)">
@@ -1141,17 +1173,11 @@ function render() {
   channelsCol.innerHTML = labelsHtml;
   tracksInner.innerHTML = tracksHtml;
 
-  // Auto-scroll to live program on today
-  if (isToday) {
-    const firstTrack = tracksInner.querySelector('.programs-track');
-    if (firstTrack) {
-      const live = firstTrack.querySelector('.program.live');
-      if (live) {
-        setTimeout(() => {
-          tracksScroll.scrollTo({ left: live.offsetLeft - 20, behavior: 'smooth' });
-        }, 100);
-      }
-    }
+  // Auto-scroll to current time on today
+  if (isToday && now >= DAY_START) {
+    setTimeout(() => {
+      tracksScroll.scrollTo({ left: minToPx(now) - 100, behavior: 'smooth' });
+    }, 100);
   }
 
   // Mouse drag to scroll
